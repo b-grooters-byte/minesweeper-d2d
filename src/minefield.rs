@@ -17,9 +17,9 @@ enum GameState {
 pub(crate) enum CellState {
     Unknown(bool),
     Known(bool),
-    Flagged,
+    Flagged(bool),
     Counted(u8),
-    Questioned,
+    Questioned(bool),
 }
 
 const DENSITY_FACTOR_A: f32 = 0.0002;
@@ -72,11 +72,54 @@ impl Game {
             self.field_state[(y*self.width+x) as usize] == CellState::Known(true) 
     }
 
-    pub(crate) fn uncover(&mut self, x: u8, y: u8) -> CellState{
+    pub(crate) fn uncover(&mut self, x: u8, y: u8) {
         let index = (y * self.width + x) as usize;
-        self.field_state[index]
-
-
+        match self.field_state[index] {
+            CellState::Questioned(false) |
+            CellState::Flagged(false) |
+            CellState::Unknown(false) => {
+                let count = self.neighbor_count(x, y);
+                if count != 0 {
+                    self.field_state[index] = CellState::Counted(count);
+                } else {
+                    let mut stack = Vec::<(u8, u8)>::new();
+                    //self.field_state[index] = CellState::Known(false);
+                    stack.push((x, y));
+                    while stack.len() > 0 {
+                        let index = (y * self.width + x) as usize;
+                        let (x, y) = stack.pop().unwrap();
+                        let count = self.neighbor_count(x, y);
+                        if count == 0 {
+                            self.field_state[index] = CellState::Known(false);
+                            if y > 0 {
+                                stack.push((x, y-1));
+                            }
+                            if x < self.width-1 {
+                                stack.push((x+1, y));
+                            }
+                            if y < self.height-1 {
+                                stack.push((x, y+1));
+                            }
+                            if x > 0 {
+                                stack.push((x-1, y));
+                            }
+                        } else {
+                            self.field_state[index] = CellState::Counted(count);
+                        }
+                    }
+                    // flood fill algorithm to find boundaries
+                }
+            }
+            CellState::Questioned(true) |
+            CellState::Flagged(true) | 
+            CellState::Unknown(true) => {
+                // uncovered a mined cell
+                self.field_state[index] = CellState::Known(true)
+            }
+            _ => {
+                // do nothing in the known states
+            }
+        }
     }
 
     fn neighbor_count(&self, x: u8, y: u8) -> u8 {
