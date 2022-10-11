@@ -23,6 +23,10 @@ fn main() -> Result<()>{
                 let (x,y) = get_coords(&input[1..input.len()]);
                 game.flag(x, y);
             },
+            '?' => {
+                let (x,y) = get_coords(&input[1..input.len()]);
+                game.question(x,y);
+            }
             _ => {}
         }
         if input == "x" {

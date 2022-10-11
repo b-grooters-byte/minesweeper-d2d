@@ -77,9 +77,27 @@ impl Game {
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
             CellState::Unknown(mined) |
-            CellState::Questioned(mined) => self.field_state[index] = CellState::Flagged(mined),
+            CellState::Questioned(mined) => {
+                self.field_state[index] = CellState::Flagged(mined);
+                if self.remaining > 0 {
+                    self.remaining -= 1;
+                }
+            }
             _ => {}
         }
+    }
+
+    pub(crate) fn question(&mut self, x: i16, y: i16) {
+        let index = (y * self.width + x) as usize;
+        match self.field_state[index] {
+            CellState::Unknown(mined) => self.field_state[index] = CellState::Questioned(mined),
+            CellState::Flagged(mined) => {
+                self.field_state[index] = CellState::Questioned(mined);
+                // todo correct for over flagged
+                self.remaining += 1;
+            }
+            _ => {}
+        }    
     }
 
     pub(crate) fn is_mined(&self, x: i16, y: i16) -> bool {
