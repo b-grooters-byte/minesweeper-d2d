@@ -3,7 +3,14 @@ name = "minesweeper-d2d"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name="cli"
+path="src/cli.rs"
+
+[[bin]]
+name="app"
+path="src/app.rs"
+
 
 [dependencies]
 rand = {version="0.8", features=["std_rng"]}
