@@ -6,14 +6,15 @@ use windows::Win32::{
     Graphics::Direct2D::ID2D1Factory1,
 };
 
-enum GameState {
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum GameState {
     Initial,
     Playing,
     Won,
     Lost,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum CellState {
     Unknown(bool),
     Known(bool),
@@ -36,44 +37,51 @@ pub(crate) struct Game {
 
 impl Game {
     pub(crate) fn new(width: i16, height: i16) -> Self {
-        let mut rng = StdRng::from_entropy();
         let size = width as usize * height as usize;
-        let mut minefield = Vec::<CellState>::with_capacity(size);
-        let density = ((width as f32 * height as f32).powi(2) * DENSITY_FACTOR_A
-            + (width as f32 * height as f32) * DENSITY_FACTOR_B
-            + DENSITY_FACTOR_C) as u16;
-
-        for _ in 0..size {
-            minefield.push(CellState::Unknown(false));
-        }
-
-        for _ in 0..density {
-            let mut cell = rng.gen_range(0..size);
-            while let CellState::Unknown(true) = minefield[cell] {
-                cell = rng.gen_range(0..size);
-            }
-            minefield[cell] = CellState::Unknown(true);
-        }
-        Game {
+        let minefield = Vec::<CellState>::with_capacity(size);
+        let mut game = Game {
             width,
             height,
             state: GameState::Initial,
             field_state: minefield,
-            remaining: density,
+            remaining: 0,
+        };
+        game.reset();
+        game
+    }
+
+    pub(crate) fn reset(&mut self) {
+        let mut rng = StdRng::from_entropy();
+        let density = ((self.width as f32 * self.height as f32).powi(2) * DENSITY_FACTOR_A
+            + (self.width as f32 * self.height as f32) * DENSITY_FACTOR_B
+            + DENSITY_FACTOR_C) as u16;
+        let size = (self.width * self.height) as usize;
+       self.clear();
+        for _ in 0..density {
+            let mut cell = rng.gen_range(0..size);
+            while let CellState::Unknown(true) = self.field_state[cell] {
+                cell = rng.gen_range(0..size);
+            }
+            self.field_state[cell] = CellState::Unknown(true);
         }
+        self.remaining = density;
+        self.state = GameState::Initial;
     }
 
     pub(crate) fn clear(&mut self) {
-        for i in 0..self.field_state.len() {
-            self.field_state[i] = CellState::Unknown(false);
+        // wipe the board and push new values
+        self.field_state.clear();
+        for i in 0..(self.width as usize* self.height as usize) {
+            self.field_state.push(CellState::Unknown(false));
         }
+        self.state = GameState::Initial;
     }
 
     pub(crate) fn remaining(&self) -> u16 {
         self.remaining
     }
 
-    pub(crate) fn flag(&mut self, x: i16, y: i16) {
+    pub(crate) fn flag(&mut self, x: i16, y: i16) {        
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
             CellState::Unknown(mined) |
@@ -85,6 +93,7 @@ impl Game {
             }
             _ => {}
         }
+        self.state = GameState::Playing;
     }
 
     pub(crate) fn question(&mut self, x: i16, y: i16) {
@@ -98,6 +107,7 @@ impl Game {
             }
             _ => {}
         }    
+        self.state = GameState::Playing;
     }
 
     pub(crate) fn is_mined(&self, x: i16, y: i16) -> bool {
@@ -105,7 +115,8 @@ impl Game {
             || self.field_state[(y * self.width + x) as usize] == CellState::Known(true)
     }
 
-    pub(crate) fn uncover(&mut self, x: i16, y: i16) {
+    pub(crate) fn uncover(&mut self, x: i16, y: i16) -> GameState{
+        self.state = GameState::Playing;
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
             CellState::Questioned(false)
@@ -151,11 +162,13 @@ impl Game {
             CellState::Questioned(true) | CellState::Flagged(true) | CellState::Unknown(true) => {
                 // uncovered a mined cell
                 self.field_state[index] = CellState::Known(true);
+                self.state = GameState::Lost;
             }
             _ => {
                 // do nothing in the known states
             }
         }
+        self.state
     }
 
     fn neighbor_count(&self, x: i16, y: i16) -> u8 {
@@ -289,5 +302,20 @@ mod test {
         game.uncover(3,3);
         assert_eq!(CellState::Known(true), game.field_state[18]);
 
+    }
+
+    #[test]
+    fn test_game_state() {
+        let mut game = Game::new(5, 5);
+        assert_eq!(GameState::Initial, game.state);
+        game.clear();
+        assert_eq!(GameState::Initial, game.state);
+        let state = game.uncover(1,1);
+        assert_eq!(GameState::Playing, state);
+        game.field_state[0] = CellState::Unknown(true);
+        let state = game.uncover(0,0);
+        assert_eq!(GameState::Lost, state);
+        game.reset();
+        assert_eq!(GameState::Initial, game.state);
     }
 }
