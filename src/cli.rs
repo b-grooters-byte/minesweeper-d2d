@@ -1,7 +1,7 @@
-mod minefield;
+mod game;
 
-use std::io::{stdin, self, Result};
-use crate::minefield::Game;
+use std::io::{self, Result};
+use crate::game::Game;
 
 const BOARD_WIDTH: i16 = 10;
 const BOARD_HEIGHT: i16 = 5;
@@ -26,9 +26,7 @@ f[x,y]  Flag a mine at the coordinates
     let mut game = Game::new(BOARD_WIDTH, BOARD_HEIGHT);
     let mut buf = String::new();
     loop {
-        
         println!("{}", game);
-
         let stdin = io::stdin();
         stdin.read_line(&mut buf)?;
         let input = buf.trim();

@@ -1,5 +1,6 @@
 mod direct2d;
-mod minefield;
+mod game;
+mod gameboard;
 
 fn main() {
     println!("Hello, world!");

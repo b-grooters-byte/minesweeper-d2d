@@ -2,8 +2,11 @@ use std::{cell::Cell, fmt::Display};
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use windows::Win32::{
-    Foundation::{LPARAM, LRESULT, WPARAM},
-    Graphics::Direct2D::ID2D1Factory1,
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    Graphics::{
+        Direct2D::ID2D1Factory1,
+        Gdi::{BeginPaint, EndPaint, PAINTSTRUCT},
+    },
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -56,7 +59,7 @@ impl Game {
             + (self.width as f32 * self.height as f32) * DENSITY_FACTOR_B
             + DENSITY_FACTOR_C) as u16;
         let size = (self.width * self.height) as usize;
-       self.clear();
+        self.clear();
         for _ in 0..density {
             let mut cell = rng.gen_range(0..size);
             while let CellState::Unknown(true) = self.field_state[cell] {
@@ -71,7 +74,7 @@ impl Game {
     pub(crate) fn clear(&mut self) {
         // wipe the board and push new values
         self.field_state.clear();
-        for i in 0..(self.width as usize* self.height as usize) {
+        for i in 0..(self.width as usize * self.height as usize) {
             self.field_state.push(CellState::Unknown(false));
         }
         self.state = GameState::Initial;
@@ -81,11 +84,10 @@ impl Game {
         self.remaining
     }
 
-    pub(crate) fn flag(&mut self, x: i16, y: i16) {        
+    pub(crate) fn flag(&mut self, x: i16, y: i16) {
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
-            CellState::Unknown(mined) |
-            CellState::Questioned(mined) => {
+            CellState::Unknown(mined) | CellState::Questioned(mined) => {
                 self.field_state[index] = CellState::Flagged(mined);
                 if self.remaining > 0 {
                     self.remaining -= 1;
@@ -106,7 +108,7 @@ impl Game {
                 self.remaining += 1;
             }
             _ => {}
-        }    
+        }
         self.state = GameState::Playing;
     }
 
@@ -115,7 +117,7 @@ impl Game {
             || self.field_state[(y * self.width + x) as usize] == CellState::Known(true)
     }
 
-    pub(crate) fn uncover(&mut self, x: i16, y: i16) -> GameState{
+    pub(crate) fn uncover(&mut self, x: i16, y: i16) -> GameState {
         self.state = GameState::Playing;
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
@@ -218,20 +220,6 @@ impl Display for Game {
     }
 }
 
-pub(crate) struct MineFieldWindow<'a> {
-    factory: &'a ID2D1Factory1,
-}
-
-impl<'a> MineFieldWindow<'a> {
-    pub(crate) fn new(factory: &'a ID2D1Factory1) -> Self {
-        MineFieldWindow { factory }
-    }
-
-    fn message_handler(&mut self, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-        todo!()
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -299,9 +287,8 @@ mod test {
         assert_eq!(CellState::Counted(1), game.field_state[12]);
         assert_eq!(CellState::Counted(1), game.field_state[13]);
         assert_eq!(CellState::Unknown(false), game.field_state[14]);
-        game.uncover(3,3);
+        game.uncover(3, 3);
         assert_eq!(CellState::Known(true), game.field_state[18]);
-
     }
 
     #[test]
@@ -310,10 +297,10 @@ mod test {
         assert_eq!(GameState::Initial, game.state);
         game.clear();
         assert_eq!(GameState::Initial, game.state);
-        let state = game.uncover(1,1);
+        let state = game.uncover(1, 1);
         assert_eq!(GameState::Playing, state);
         game.field_state[0] = CellState::Unknown(true);
-        let state = game.uncover(0,0);
+        let state = game.uncover(0, 0);
         assert_eq!(GameState::Lost, state);
         game.reset();
         assert_eq!(GameState::Initial, game.state);
