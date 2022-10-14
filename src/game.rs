@@ -1,13 +1,5 @@
-use std::{cell::Cell, fmt::Display};
-
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    Graphics::{
-        Direct2D::ID2D1Factory1,
-        Gdi::{BeginPaint, EndPaint, PAINTSTRUCT},
-    },
-};
+use std::fmt::Display;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum GameState {
@@ -51,6 +43,19 @@ impl Game {
         };
         game.reset();
         game
+    }
+
+    pub(crate) fn width(&self) -> i16 {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> i16 {
+        self.height
+    }
+
+    pub(crate) fn cell_state(&self, x: i16, y: i16) -> CellState {
+        let index = (y * self.width + x) as usize;
+        self.field_state[index]
     }
 
     pub(crate) fn reset(&mut self) {

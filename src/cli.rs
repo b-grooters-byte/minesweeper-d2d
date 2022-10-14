@@ -5,7 +5,6 @@ use std::io::{self, Result};
 
 const BOARD_WIDTH: i16 = 10;
 const BOARD_HEIGHT: i16 = 5;
-const BOARD_COLOR: (f32, f32, f32) = (0.4, 0.4, 0.4);
 
 fn main() -> Result<()> {
     println!(

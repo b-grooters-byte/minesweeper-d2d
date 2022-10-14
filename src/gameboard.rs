@@ -7,9 +7,9 @@ use windows::{
         Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
             Direct2D::{
-                ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
+                Common::D2D1_COLOR_F, ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
                 D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_PRESENT_OPTIONS,
-                D2D1_RENDER_TARGET_PROPERTIES, Common::D2D1_COLOR_F,
+                D2D1_RENDER_TARGET_PROPERTIES,
             },
             Gdi::{BeginPaint, CreateSolidBrush, EndPaint, PAINTSTRUCT},
         },
@@ -23,7 +23,7 @@ use windows::{
     },
 };
 
-use crate::{direct2d::create_brush, game::Game};
+use crate::{direct2d::create_brush, game::CellState, game::Game};
 
 static REGISTER_GAMEBOARD_WINDOW_CLASS: Once = Once::new();
 static GAMEBOARD_WINDOW_CLASS_NAME: &HSTRING = w!("bytetrail.window.bezier-demo");
@@ -149,6 +149,21 @@ impl<'a> GameBoard<'a> {
                 a: 1.0,
             }));
             target.EndDraw(None, None)?;
+        }
+        Ok(())
+    }
+
+    fn draw_board(&mut self, target: &ID2D1HwndRenderTarget) -> Result<()> {
+        for x in 0..self.game.width() {
+            for y in 0..self.game.height() {
+                match self.game.cell_state(x, y) {
+                    CellState::Flagged(_) => {}
+                    CellState::Unknown(_) => {}
+                    CellState::Known(mined) => {}
+                    CellState::Counted(count) => {}
+                    CellState::Questioned(_) => {}
+                }
+            }
         }
         Ok(())
     }
