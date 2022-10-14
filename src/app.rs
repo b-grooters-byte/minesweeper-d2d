@@ -2,16 +2,26 @@ mod direct2d;
 mod game;
 mod gameboard;
 
-use gameboard::GameBoard;
+use gameboard::{BoardLevel, GameBoard};
 use std::sync::Once;
 use windows::{
     core::Result,
     core::HSTRING,
     w,
     Win32::{
-        Foundation::HWND,
-        Graphics::Direct2D::ID2D1Factory1,
-        UI::WindowsAndMessaging::{DispatchMessageW, GetMessageW, MSG},
+        Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        Graphics::{
+            Direct2D::ID2D1Factory1,
+            Gdi::{COLOR_WINDOW, HBRUSH},
+        },
+        System::LibraryLoader::GetModuleHandleW,
+        UI::WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrA,
+            LoadCursorW, PostQuitMessage, RegisterClassW, SetWindowLongPtrA, ShowWindow,
+            CREATESTRUCTA, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW,
+            MSG, SW_SHOW, WINDOW_EX_STYLE, WM_CREATE, WM_DESTROY, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+            WS_VISIBLE,
+        },
     },
 };
 
@@ -38,12 +48,91 @@ pub(crate) struct AppWindow<'a> {
 
 impl<'a> AppWindow<'a> {
     pub(crate) fn new(title: &'static str, factory: &'a ID2D1Factory1) -> Result<Box<Self>> {
-        let window = Box::new(AppWindow {
+        let instance = unsafe { GetModuleHandleW(None)? };
+        // synchronization for a one time initialization of FFI call
+        REGISTER_WINDOW_CLASS.call_once(|| {
+            // use defaults for all other fields
+            let class = WNDCLASSW {
+                lpfnWndProc: Some(Self::wnd_proc),
+                hbrBackground: HBRUSH(COLOR_WINDOW.0 as isize),
+                hInstance: instance,
+                style: CS_HREDRAW | CS_VREDRAW,
+                hCursor: unsafe { LoadCursorW(HINSTANCE(0), IDC_ARROW).ok().unwrap() },
+                lpszClassName: WINDOW_CLASS_NAME.into(),
+                ..Default::default()
+            };
+            assert_ne!(unsafe { RegisterClassW(&class) }, 0);
+        });
+        let mut app_window = Box::new(AppWindow {
             handle: HWND(0),
             game_board: None,
             factory,
         });
+        // create the window using Self reference
+        let window = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE::default(),
+                WINDOW_CLASS_NAME,
+                &HSTRING::from(title),
+                WS_VISIBLE | WS_OVERLAPPEDWINDOW,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                400,
+                300,
+                HWND(0),
+                HMENU(0),
+                instance,
+                Some(app_window.as_mut() as *mut _ as _),
+            )
+        };
+        unsafe { ShowWindow(window, SW_SHOW) };
+        Ok(app_window)
+    }
 
-        Ok(window)
+    fn message_loop(
+        &mut self,
+        window: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match message {
+            WM_CREATE => {
+                match GameBoard::new(self.handle, BoardLevel::Medium, self.factory) {
+                    Ok(board) => {
+                        self.game_board = Some(board);
+                    }
+                    Err(_e) => {
+                        // TODO determine correct LRESULT
+                        return LRESULT(-1);
+                    }
+                }
+                LRESULT(0)
+            }
+            WM_DESTROY => {
+                unsafe { PostQuitMessage(0) };
+                LRESULT(0)
+            }
+            _ => unsafe { DefWindowProcW(window, message, wparam, lparam) },
+        }
+    }
+    unsafe extern "system" fn wnd_proc(
+        window: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        if message == WM_CREATE {
+            let create_struct = lparam.0 as *const CREATESTRUCTA;
+            let this = (*create_struct).lpCreateParams as *mut Self;
+            (*this).handle = window;
+            SetWindowLongPtrA(window, GWLP_USERDATA, this as _);
+        }
+        let this = GetWindowLongPtrA(window, GWLP_USERDATA) as *mut Self;
+
+        if !this.is_null() {
+            return (*this).message_loop(window, message, wparam, lparam);
+        }
+        DefWindowProcW(window, message, wparam, lparam)
     }
 }
