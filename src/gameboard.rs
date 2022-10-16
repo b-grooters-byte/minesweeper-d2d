@@ -1,39 +1,46 @@
 use std::sync::Once;
 
 use windows::{
-    core::{IUnknown, Result, HSTRING, GUID},
+    core::{Result, HSTRING},
     w,
     Win32::{
         Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
             Direct2D::{
-                Common::{D2D1_COLOR_F, D2D_RECT_F},
-                ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
-                D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_PRESENT_OPTIONS,
-                D2D1_RENDER_TARGET_PROPERTIES,
+                Common::{D2D1_COLOR_F, D2D_POINT_2F, D2D_RECT_F},
+                ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
+                D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_HWND_RENDER_TARGET_PROPERTIES,
+                D2D1_PRESENT_OPTIONS, D2D1_RENDER_TARGET_PROPERTIES,
             },
-            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, PAINTSTRUCT, InvalidateRect}, DirectWrite::{DWriteCreateFactory, DWRITE_FACTORY_TYPE_SHARED, IDWriteFactory, IDWriteFactory1},
+            DirectWrite::{
+                DWriteCreateFactory, IDWriteFactory, IDWriteTextFormat,
+                DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_MEASURING_MODE_NATURAL,
+                DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_TEXT_ALIGNMENT_CENTER, DWRITE_FONT_WEIGHT_BOLD,
+            },
+            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, InvalidateRect, PAINTSTRUCT},
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowLongPtrA, LoadCursorW,
             RegisterClassW, SetWindowLongPtrA, CREATESTRUCTA, CS_HREDRAW, CS_VREDRAW,
-            CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW, WINDOW_EX_STYLE, WM_CREATE, WM_PAINT,
-            WNDCLASSW, WS_CHILDWINDOW, WS_CLIPSIBLINGS, WS_VISIBLE, WM_LBUTTONUP,
+            CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW, WINDOW_EX_STYLE, WM_CREATE,
+            WM_LBUTTONUP, WM_PAINT, WNDCLASSW, WS_CHILDWINDOW, WS_CLIPSIBLINGS, WS_VISIBLE,
         },
     },
 };
 
-use crate::{direct2d::create_brush, game::CellState, game::Game};
+use crate::{direct2d::{create_brush, create_style}, game::CellState, game::Game};
 
 static REGISTER_GAMEBOARD_WINDOW_CLASS: Once = Once::new();
 static GAMEBOARD_WINDOW_CLASS_NAME: &HSTRING = w!("bytetrail.window.bezier-demo");
 
-const CELL_WIDTH: f32 = 5.0 / 25.4;
-const CELL_HEIGHT: f32 = 5.0 / 25.4;
+const CELL_WIDTH: f32 = 6.0 / 25.4;
+const CELL_HEIGHT: f32 = 6.0 / 25.4;
 const BOARD_COLOR: (f32, f32, f32) = (0.4, 0.4, 0.4);
-const CELL_COLOR: (f32, f32, f32) = (0.85, 0.85, 0.85);
-const CELL_HIGHLIGHT: (f32, f32, f32) = (0.95, 0.95, 0.95);
+const CELL_COLOR: (f32, f32, f32) = (0.75, 0.75, 0.75);
+const CELL_HIGHLIGHT: (f32, f32, f32) = (1.0, 1.0, 1.0);
+const NUM_BRUSH: [(f32, f32, f32); 7] = [(0.0, 0.0, 0.5),(0.0, 0.5, 0.0),(0.5, 0.0, 0.0),(0.35, 0.0, 0.7), (0.25, 0.0, 0.0), (0.0, 0.65, 1.0), (0.0, 0.0, 0.0)];
 
 pub(crate) enum BoardLevel {
     Easy,
@@ -44,9 +51,12 @@ pub(crate) enum BoardLevel {
 pub(crate) struct GameBoard<'a> {
     handle: HWND,
     factory: &'a ID2D1Factory1,
-    write_factory: IDWriteFactory,
+    text_format: IDWriteTextFormat,
     target: Option<ID2D1HwndRenderTarget>,
+    line_style: ID2D1StrokeStyle,
     cell_brush: Option<ID2D1SolidColorBrush>,
+    cell_highlight: Option<ID2D1SolidColorBrush>,
+    num_brush: [Option<ID2D1SolidColorBrush>; 7],
     game: Game,
     cell_width: f32,
     cell_height: f32,
@@ -61,8 +71,25 @@ impl<'a> GameBoard<'a> {
         factory: &'a ID2D1Factory1,
     ) -> Result<Box<Self>> {
         let instance = unsafe { GetModuleHandleW(None)? };
-        let factory_iid = GUID::new()?;
-        let write_factory: IDWriteFactory = unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?};
+        let write_factory: IDWriteFactory =
+            unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
+        let line_style = create_style(&factory, None)?;
+
+        let mut text_format = unsafe {
+            write_factory.CreateTextFormat(
+                &HSTRING::from("San Serif"),
+                None,
+                DWRITE_FONT_WEIGHT_BOLD,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                14.0,
+                &HSTRING::from("en-US"),
+            )?
+        };
+        unsafe {
+            text_format.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+            text_format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+        }
         REGISTER_GAMEBOARD_WINDOW_CLASS.call_once(|| {
             // use defaults for all other fields
             let class = WNDCLASSW {
@@ -102,9 +129,12 @@ impl<'a> GameBoard<'a> {
         let mut board = Box::new(GameBoard {
             handle: HWND(0),
             factory,
-            write_factory,
+            text_format,
             target: None,
+            line_style,
             cell_brush: None,
+            cell_highlight: None,
+            num_brush: [None, None, None, None, None, None, None, ],
             game,
             cell_width: dpix * CELL_WIDTH as f32,
             cell_height: dpiy * CELL_HEIGHT as f32,
@@ -136,6 +166,13 @@ impl<'a> GameBoard<'a> {
             self.create_render_target()?;
             let target = self.target.as_ref().unwrap();
             unsafe { target.SetDpi(self.dpix, self.dpiy) };
+            self.cell_highlight = Some(create_brush(
+                target,
+                CELL_HIGHLIGHT.0,
+                CELL_HIGHLIGHT.1,
+                CELL_HIGHLIGHT.2,
+                1.0,
+            )?);
             self.cell_brush = Some(create_brush(
                 target,
                 CELL_COLOR.0,
@@ -143,6 +180,15 @@ impl<'a> GameBoard<'a> {
                 CELL_COLOR.2,
                 1.0,
             )?);
+            for i in 0..4 {
+                self.num_brush[i] = Some(create_brush(
+                    target,
+                    NUM_BRUSH[i].0,
+                    NUM_BRUSH[i].1,
+                    NUM_BRUSH[i].2,
+                    1.0,
+                )?);
+                }
         }
         unsafe {
             self.target.as_ref().unwrap().BeginDraw();
@@ -164,12 +210,25 @@ impl<'a> GameBoard<'a> {
         }
 
         let cell_brush = self.cell_brush.as_ref().unwrap();
+        let cell_highlight = self.cell_highlight.as_ref().unwrap();
+        let num_brush: [&ID2D1SolidColorBrush; 4] = [
+            self.num_brush[0].as_ref().unwrap(),
+            self.num_brush[1].as_ref().unwrap(),
+            self.num_brush[2].as_ref().unwrap(),
+            self.num_brush[3].as_ref().unwrap(),
+        ];
         for x in 0..self.game.width() {
             for y in 0..self.game.height() {
                 let left = x as f32 * self.cell_width + 1.0;
-                let top = y as f32  * self.cell_height + 1.0;
+                let top = y as f32 * self.cell_height + 1.0;
                 let right = left + self.cell_width - 2.0;
                 let bottom = top + self.cell_height - 2.0;
+                let rect = D2D_RECT_F {
+                    left,
+                    top,
+                    right,
+                    bottom,
+                };
                 match self.game.cell_state(x, y) {
                     CellState::Flagged(_) => {
                         unsafe {
@@ -184,23 +243,58 @@ impl<'a> GameBoard<'a> {
                             )
                         };
                     }
-                    CellState::Unknown(_) => {
-                        unsafe {
-                            target.FillRectangle(
-                                &D2D_RECT_F {
-                                    left,
-                                    top,
-                                    right,
-                                    bottom
-                                },
-                                cell_brush,
-                            )
-                        };
+                    CellState::Unknown(_) => unsafe {
+                        target.FillRectangle(&rect, cell_brush);
+                        target.DrawLine(
+                            D2D_POINT_2F {
+                                x: left ,
+                                y: top ,
+                            },
+                            D2D_POINT_2F {
+                                x: left,
+                                y: bottom,
+                            },
+                            cell_highlight,
+                            1.5,
+                            &self.line_style,
+                        );
+                        target.DrawLine(
+                            D2D_POINT_2F {
+                                x: left,
+                                y: top ,
+                            },
+                            D2D_POINT_2F {
+                                x: right,
+                                y: top,
+                            },
+                            cell_highlight,
+                            1.5,
+                            &self.line_style,
+                        );
+                    },
+                    CellState::Known(mined) => {
+                        if !mined {
+                            unsafe { target.FillRectangle(&rect, cell_brush); }
+                        } else {
+                            println!("BOOM!");
+                        }
                     }
-                    CellState::Known(mined) => {}
-                    CellState::Counted(count) => {
-
-                    }
+                    CellState::Counted(count) => unsafe {
+                        let mut mine_count = count;
+                        target.FillRectangle(&rect, cell_brush);
+                        let num: Vec<u16> = count.to_string().encode_utf16().collect();
+                        if count > 7 { 
+                            mine_count = 7;
+                        }
+                        target.DrawText(
+                            &num,
+                            &self.text_format,
+                            &rect,
+                            num_brush[(mine_count-1) as usize],
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                            DWRITE_MEASURING_MODE_NATURAL,
+                        );
+                    },
                     CellState::Questioned(_) => {}
                 }
             }
@@ -238,7 +332,7 @@ impl<'a> GameBoard<'a> {
                 }
                 LRESULT(0)
             }
-            WM_LBUTTONUP =>  {
+            WM_LBUTTONUP => {
                 let (x, y) = mouse_position(lparam);
                 let x_cell = (x / self.cell_width) as i16;
                 let y_cell = (y / self.cell_height) as i16;
@@ -246,7 +340,6 @@ impl<'a> GameBoard<'a> {
                 // TODO manage the results of uncover to control clip
                 unsafe { InvalidateRect(self.handle, None, false) };
                 LRESULT(0)
-
             }
             _ => unsafe { DefWindowProcW(self.handle, message, wparam, lparam) },
         }
@@ -274,7 +367,6 @@ impl<'a> GameBoard<'a> {
         DefWindowProcW(window, message, wparam, lparam)
     }
 }
-
 
 fn mouse_position(lparam: LPARAM) -> (f32, f32) {
     (
