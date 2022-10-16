@@ -16,7 +16,7 @@ path="src/app.rs"
 rand = {version="0.8", features=["std_rng"]}
 
 [dependencies.windows]
-version = "0.41"
+version = "0.42"
 features = [
     "Foundation",
     "Foundation_Numerics",
@@ -26,6 +26,7 @@ features = [
     "Win32_Graphics_Direct2D_Common",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_DirectWrite",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Graphics_Gdi",

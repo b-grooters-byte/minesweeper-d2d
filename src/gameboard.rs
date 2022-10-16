@@ -1,24 +1,25 @@
 use std::sync::Once;
 
 use windows::{
-    core::{Result, HSTRING},
+    core::{IUnknown, Result, HSTRING, GUID},
     w,
     Win32::{
         Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
             Direct2D::{
-                Common::D2D1_COLOR_F, ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
+                Common::{D2D1_COLOR_F, D2D_RECT_F},
+                ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
                 D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_PRESENT_OPTIONS,
                 D2D1_RENDER_TARGET_PROPERTIES,
             },
-            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, PAINTSTRUCT},
+            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, PAINTSTRUCT, InvalidateRect}, DirectWrite::{DWriteCreateFactory, DWRITE_FACTORY_TYPE_SHARED, IDWriteFactory, IDWriteFactory1},
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowLongPtrA, LoadCursorW,
             RegisterClassW, SetWindowLongPtrA, CREATESTRUCTA, CS_HREDRAW, CS_VREDRAW,
             CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW, WINDOW_EX_STYLE, WM_CREATE, WM_PAINT,
-            WNDCLASSW, WS_CHILDWINDOW, WS_CLIPSIBLINGS, WS_VISIBLE,
+            WNDCLASSW, WS_CHILDWINDOW, WS_CLIPSIBLINGS, WS_VISIBLE, WM_LBUTTONUP,
         },
     },
 };
@@ -43,11 +44,12 @@ pub(crate) enum BoardLevel {
 pub(crate) struct GameBoard<'a> {
     handle: HWND,
     factory: &'a ID2D1Factory1,
+    write_factory: IDWriteFactory,
     target: Option<ID2D1HwndRenderTarget>,
     cell_brush: Option<ID2D1SolidColorBrush>,
     game: Game,
-    cell_width: i32,
-    cell_height: i32,
+    cell_width: f32,
+    cell_height: f32,
     dpix: f32,
     dpiy: f32,
 }
@@ -59,6 +61,8 @@ impl<'a> GameBoard<'a> {
         factory: &'a ID2D1Factory1,
     ) -> Result<Box<Self>> {
         let instance = unsafe { GetModuleHandleW(None)? };
+        let factory_iid = GUID::new()?;
+        let write_factory: IDWriteFactory = unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?};
         REGISTER_GAMEBOARD_WINDOW_CLASS.call_once(|| {
             // use defaults for all other fields
             let class = WNDCLASSW {
@@ -98,11 +102,12 @@ impl<'a> GameBoard<'a> {
         let mut board = Box::new(GameBoard {
             handle: HWND(0),
             factory,
+            write_factory,
             target: None,
             cell_brush: None,
             game,
-            cell_width: (dpix * CELL_WIDTH as f32) as i32,
-            cell_height: (dpiy * CELL_HEIGHT as f32) as i32,
+            cell_width: dpix * CELL_WIDTH as f32,
+            cell_height: dpiy * CELL_HEIGHT as f32,
             dpix,
             dpiy,
         });
@@ -139,28 +144,63 @@ impl<'a> GameBoard<'a> {
                 1.0,
             )?);
         }
-        let target = self.target.as_ref().unwrap();
         unsafe {
-            target.BeginDraw();
+            self.target.as_ref().unwrap().BeginDraw();
+            self.draw_board();
+            self.target.as_ref().unwrap().EndDraw(None, None)?;
+        }
+        Ok(())
+    }
+
+    fn draw_board(&mut self) -> Result<()> {
+        let target = self.target.as_mut().unwrap();
+        unsafe {
             target.Clear(Some(&D2D1_COLOR_F {
                 r: BOARD_COLOR.0,
                 g: BOARD_COLOR.1,
                 b: BOARD_COLOR.2,
                 a: 1.0,
             }));
-            target.EndDraw(None, None)?;
         }
-        Ok(())
-    }
 
-    fn draw_board(&mut self, target: &ID2D1HwndRenderTarget) -> Result<()> {
+        let cell_brush = self.cell_brush.as_ref().unwrap();
         for x in 0..self.game.width() {
             for y in 0..self.game.height() {
+                let left = x as f32 * self.cell_width + 1.0;
+                let top = y as f32  * self.cell_height + 1.0;
+                let right = left + self.cell_width - 2.0;
+                let bottom = top + self.cell_height - 2.0;
                 match self.game.cell_state(x, y) {
-                    CellState::Flagged(_) => {}
-                    CellState::Unknown(_) => {}
+                    CellState::Flagged(_) => {
+                        unsafe {
+                            target.FillRectangle(
+                                &D2D_RECT_F {
+                                    left: 1.0,
+                                    top: 1.0,
+                                    right: 11.0,
+                                    bottom: 10.0,
+                                },
+                                cell_brush,
+                            )
+                        };
+                    }
+                    CellState::Unknown(_) => {
+                        unsafe {
+                            target.FillRectangle(
+                                &D2D_RECT_F {
+                                    left,
+                                    top,
+                                    right,
+                                    bottom
+                                },
+                                cell_brush,
+                            )
+                        };
+                    }
                     CellState::Known(mined) => {}
-                    CellState::Counted(count) => {}
+                    CellState::Counted(count) => {
+
+                    }
                     CellState::Questioned(_) => {}
                 }
             }
@@ -198,6 +238,16 @@ impl<'a> GameBoard<'a> {
                 }
                 LRESULT(0)
             }
+            WM_LBUTTONUP =>  {
+                let (x, y) = mouse_position(lparam);
+                let x_cell = (x / self.cell_width) as i16;
+                let y_cell = (y / self.cell_height) as i16;
+                self.game.uncover(x_cell, y_cell);
+                // TODO manage the results of uncover to control clip
+                unsafe { InvalidateRect(self.handle, None, false) };
+                LRESULT(0)
+
+            }
             _ => unsafe { DefWindowProcW(self.handle, message, wparam, lparam) },
         }
     }
@@ -223,4 +273,12 @@ impl<'a> GameBoard<'a> {
         }
         DefWindowProcW(window, message, wparam, lparam)
     }
+}
+
+
+fn mouse_position(lparam: LPARAM) -> (f32, f32) {
+    (
+        (lparam.0 & 0x0000_FFFF) as f32,
+        ((lparam.0 & 0xFFFF_0000) >> 16) as f32,
+    )
 }
