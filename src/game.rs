@@ -1,5 +1,5 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::fmt::Display;
+use std::{fmt::Display};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum GameState {
@@ -123,6 +123,9 @@ impl Game {
     }
 
     pub(crate) fn uncover(&mut self, x: i16, y: i16) -> GameState {
+        if self.state == GameState::Lost {
+            return self.state;
+        }
         self.state = GameState::Playing;
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
@@ -194,7 +197,9 @@ impl Game {
                 if index == (y * self.width + x) as usize {
                     continue;
                 }
-                if self.field_state[index] == CellState::Unknown(true) {
+                if self.field_state[index] == CellState::Unknown(true) || 
+                    self.field_state[index] == CellState::Questioned(true)  || 
+                    self.field_state[index] == CellState::Flagged(true) {
                     count += 1
                 }
             }
@@ -294,6 +299,24 @@ mod test {
         assert_eq!(CellState::Unknown(false), game.field_state[14]);
         game.uncover(3, 3);
         assert_eq!(CellState::Known(true), game.field_state[18]);
+    }
+
+    #[test] 
+    pub fn test_uncover_edge() {
+        // 1 1 1 0 0
+        // 2 * 1 0 0 
+        // * 3 1 0 0
+        // * 2 0 0 0 
+        let mut game = Game::new(5, 5);
+        game.clear();
+        game.field_state[6] = CellState::Unknown(true);
+        game.field_state[10] = CellState::Unknown(true);
+        game.field_state[15] = CellState::Unknown(true);
+        game.uncover(2, 3);
+        assert_eq!(CellState::Counted(2), game.field_state[16]);
+        assert_eq!(CellState::Counted(3), game.field_state[11]);
+        assert_eq!(CellState::Counted(1), game.field_state[12]);
+        assert_eq!(CellState::Counted(1), game.field_state[7]);
     }
 
     #[test]

@@ -275,9 +275,7 @@ impl<'a> GameBoard<'a> {
                     CellState::Known(mined) => {
                         if !mined {
                             unsafe { target.FillRectangle(&rect, cell_brush); }
-                        } else {
-                            println!("BOOM!");
-                        }
+                        } 
                     }
                     CellState::Counted(count) => unsafe {
                         let mut mine_count = count;
