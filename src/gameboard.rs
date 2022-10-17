@@ -30,7 +30,7 @@ use windows::{
     },
 };
 
-use crate::{direct2d::{create_brush, create_style}, game::CellState, game::Game};
+use crate::{direct2d::{create_brush, create_style}, game::{GameState, CellState, Game}};
 
 static REGISTER_GAMEBOARD_WINDOW_CLASS: Once = Once::new();
 static GAMEBOARD_WINDOW_CLASS_NAME: &HSTRING = w!("bytetrail.window.bezier-demo");
@@ -75,7 +75,7 @@ impl<'a> GameBoard<'a> {
             unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
         let line_style = create_style(&factory, None)?;
 
-        let mut text_format = unsafe {
+        let text_format = unsafe {
             write_factory.CreateTextFormat(
                 &HSTRING::from("San Serif"),
                 None,
@@ -331,10 +331,17 @@ impl<'a> GameBoard<'a> {
                 LRESULT(0)
             }
             WM_LBUTTONUP => {
-                let (x, y) = mouse_position(lparam);
-                let x_cell = (x / self.cell_width) as i16;
-                let y_cell = (y / self.cell_height) as i16;
-                self.game.uncover(x_cell, y_cell);
+                if self.game.state() == GameState::Lost {
+                    self.game.reset();
+                } else {
+                    let (x, y) = mouse_position(lparam);
+                    let x_cell = (x / self.cell_width) as i16;
+                    let y_cell = (y / self.cell_height) as i16;
+                    let state = self.game.uncover(x_cell, y_cell);
+                    if state == GameState::Lost {
+                        self.game.show_mined();
+                    }    
+                }
                 // TODO manage the results of uncover to control clip
                 unsafe { InvalidateRect(self.handle, None, false) };
                 LRESULT(0)

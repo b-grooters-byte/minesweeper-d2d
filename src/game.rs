@@ -53,6 +53,10 @@ impl Game {
         self.height
     }
 
+    pub(crate) fn state(&self) -> GameState {
+        self.state
+    }
+
     pub(crate) fn cell_state(&self, x: i16, y: i16) -> CellState {
         let index = (y * self.width + x) as usize;
         self.field_state[index]
@@ -120,6 +124,14 @@ impl Game {
     pub(crate) fn is_mined(&self, x: i16, y: i16) -> bool {
         self.field_state[(y * self.width + x) as usize] == CellState::Unknown(true)
             || self.field_state[(y * self.width + x) as usize] == CellState::Known(true)
+    }
+
+    pub(crate) fn show_mined(&mut self) {
+        for i in 0..self.field_state.len() {
+            if self.field_state[i] == CellState::Unknown(true) {
+                self.field_state[i] = CellState::Known(true);
+            }
+        }
     }
 
     pub(crate) fn uncover(&mut self, x: i16, y: i16) -> GameState {
@@ -207,6 +219,10 @@ impl Game {
         count
     }
 }
+
+
+
+
 
 impl Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
