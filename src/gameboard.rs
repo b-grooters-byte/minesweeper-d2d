@@ -161,6 +161,10 @@ impl<'a> GameBoard<'a> {
         Ok(board)
     }
 
+    pub(crate) fn hwnd(&self) -> HWND {
+        self.handle
+    }
+
     fn render(&mut self) -> Result<()> {
         if self.target.is_none() {
             self.create_render_target()?;

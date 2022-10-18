@@ -9,7 +9,7 @@ use windows::{
     core::HSTRING,
     w,
     Win32::{
-        Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM, RECT},
         Graphics::{
             Direct2D::ID2D1Factory1,
             Gdi::{COLOR_WINDOW, HBRUSH},
@@ -20,7 +20,7 @@ use windows::{
             LoadCursorW, PostQuitMessage, RegisterClassW, SetWindowLongPtrA, ShowWindow,
             CREATESTRUCTA, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW,
             MSG, SW_SHOW, WINDOW_EX_STYLE, WM_CREATE, WM_DESTROY, WNDCLASSW, WS_OVERLAPPEDWINDOW,
-            WS_VISIBLE,
+            WS_VISIBLE, GetWindowRect, SetWindowPos, SWP_NOMOVE, AdjustWindowRect,
         },
     },
 };
@@ -101,6 +101,17 @@ impl<'a> AppWindow<'a> {
                 match GameBoard::new(self.handle, BoardLevel::Medium, self.factory) {
                     Ok(board) => {
                         self.game_board = Some(board);
+                        let mut rect  = RECT::default();
+                        let mut child_rect = RECT::default(); 
+                        unsafe { 
+                            GetWindowRect(self.handle, &mut rect);
+                            GetWindowRect(self.game_board.as_ref().unwrap().hwnd(), &mut child_rect);
+                            AdjustWindowRect(&mut child_rect, WS_VISIBLE | WS_OVERLAPPEDWINDOW, false);
+                            SetWindowPos(self.handle, None, rect.left, rect.top, 
+                                child_rect.right - child_rect.left, 
+                                 child_rect.bottom - child_rect.top, 
+                                 SWP_NOMOVE);
+                        }
                     }
                     Err(_e) => {
                         // TODO determine correct LRESULT
