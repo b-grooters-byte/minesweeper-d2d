@@ -1,5 +1,5 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::{fmt::Display};
+use std::{cell::Cell, fmt::Display};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum GameState {
@@ -27,6 +27,7 @@ pub(crate) struct Game {
     height: i16,
     state: GameState,
     field_state: Vec<CellState>,
+    total: u16,
     remaining: u16,
 }
 
@@ -39,6 +40,7 @@ impl Game {
             height,
             state: GameState::Initial,
             field_state: minefield,
+            total: 0,
             remaining: 0,
         };
         game.reset();
@@ -77,6 +79,7 @@ impl Game {
             self.field_state[cell] = CellState::Unknown(true);
         }
         self.remaining = density;
+        self.total = density;
         self.state = GameState::Initial;
     }
 
@@ -119,6 +122,23 @@ impl Game {
             _ => {}
         }
         self.state = GameState::Playing;
+    }
+
+    pub(crate) fn set_unknown(&mut self, x: i16, y: i16) {
+        let index = (y * self.width + x) as usize;
+        match self.field_state[index] {
+            CellState::Flagged(mined) => {
+                self.field_state[index] = CellState::Unknown(mined);
+                // todo correct for over flagged
+                self.remaining += 1;
+            }
+            CellState::Known(mined) | CellState::Questioned(mined) => {
+                self.field_state[index] = CellState::Unknown(mined)
+            }
+
+            CellState::Counted(_) => self.field_state[index] = CellState::Unknown(false),
+            _ => {}
+        }
     }
 
     pub(crate) fn is_mined(&self, x: i16, y: i16) -> bool {
@@ -209,9 +229,10 @@ impl Game {
                 if index == (y * self.width + x) as usize {
                     continue;
                 }
-                if self.field_state[index] == CellState::Unknown(true) || 
-                    self.field_state[index] == CellState::Questioned(true)  || 
-                    self.field_state[index] == CellState::Flagged(true) {
+                if self.field_state[index] == CellState::Unknown(true)
+                    || self.field_state[index] == CellState::Questioned(true)
+                    || self.field_state[index] == CellState::Flagged(true)
+                {
                     count += 1
                 }
             }
@@ -219,10 +240,6 @@ impl Game {
         count
     }
 }
-
-
-
-
 
 impl Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -317,12 +334,12 @@ mod test {
         assert_eq!(CellState::Known(true), game.field_state[18]);
     }
 
-    #[test] 
+    #[test]
     pub fn test_uncover_edge() {
         // 1 1 1 0 0
-        // 2 * 1 0 0 
+        // 2 * 1 0 0
         // * 3 1 0 0
-        // * 2 0 0 0 
+        // * 2 0 0 0
         let mut game = Game::new(5, 5);
         game.clear();
         game.field_state[6] = CellState::Unknown(true);
