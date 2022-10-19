@@ -19,7 +19,7 @@ use windows::{
                 DWRITE_MEASURING_MODE_NATURAL, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
                 DWRITE_TEXT_ALIGNMENT_CENTER,
             },
-            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, InvalidateRect, PAINTSTRUCT},
+            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, InvalidateRect, PAINTSTRUCT, BLACK_BRUSH},
             Imaging::IWICImagingFactory,
         },
         System::LibraryLoader::GetModuleHandleW,
@@ -46,6 +46,7 @@ const CELL_HEIGHT: f32 = 6.0 / 25.4;
 const BOARD_COLOR: (f32, f32, f32) = (0.4, 0.4, 0.4);
 const CELL_COLOR: (f32, f32, f32) = (0.75, 0.75, 0.75);
 const CELL_HIGHLIGHT: (f32, f32, f32) = (1.0, 1.0, 1.0);
+const DEFAULT_COLOR: (f32, f32, f32) = (0.0, 0.0, 0.0);
 const NUM_BRUSH: [(f32, f32, f32); 7] = [
     (0.0, 0.0, 0.5),
     (0.0, 0.5, 0.0),
@@ -71,6 +72,7 @@ pub(crate) struct GameBoard<'a> {
     text_format: IDWriteTextFormat,
     target: Option<ID2D1HwndRenderTarget>,
     line_style: ID2D1StrokeStyle,
+    default_brush: Option<ID2D1SolidColorBrush>,
     cell_brush: Option<ID2D1SolidColorBrush>,
     cell_highlight: Option<ID2D1SolidColorBrush>,
     num_brush: [Option<ID2D1SolidColorBrush>; 7],
@@ -151,6 +153,7 @@ impl<'a> GameBoard<'a> {
             text_format,
             target: None,
             line_style,
+            default_brush: None,
             cell_brush: None,
             cell_highlight: None,
             num_brush: [None, None, None, None, None, None, None],
@@ -191,6 +194,7 @@ impl<'a> GameBoard<'a> {
             let target = self.target.as_ref().unwrap();
             self.flag = Some(load_bitmap(FLAG_FILE, target, &self.image_factory)?);
             unsafe { target.SetDpi(self.dpix, self.dpiy) };
+            self.default_brush = Some(create_brush(target, DEFAULT_COLOR.0, DEFAULT_COLOR.1, DEFAULT_COLOR.2, 1.0)?);
             self.cell_highlight = Some(create_brush(
                 target,
                 CELL_HIGHLIGHT.0,
@@ -234,15 +238,17 @@ impl<'a> GameBoard<'a> {
             }));
         }
 
+        let default_brush = self.default_brush.as_ref().unwrap();
         let cell_brush = self.cell_brush.as_ref().unwrap();
         let cell_highlight = self.cell_highlight.as_ref().unwrap();
-        let flag = self.flag.as_ref().unwrap();
         let num_brush: [&ID2D1SolidColorBrush; 4] = [
             self.num_brush[0].as_ref().unwrap(),
             self.num_brush[1].as_ref().unwrap(),
             self.num_brush[2].as_ref().unwrap(),
             self.num_brush[3].as_ref().unwrap(),
         ];
+        let flag = self.flag.as_ref().unwrap();
+
         for x in 0..self.game.width() {
             for y in 0..self.game.height() {
                 let left = x as f32 * self.cell_width + 1.0;
@@ -256,7 +262,7 @@ impl<'a> GameBoard<'a> {
                     bottom,
                 };
                 match self.game.cell_state(x, y) {
-                    CellState::Flagged(_) => {
+                    CellState::Flagged(_) | CellState::Questioned(_) | CellState::Unknown(_) => {
                         unsafe {
                             target.FillRectangle(&rect, cell_brush);
                             target.DrawLine(
@@ -273,32 +279,33 @@ impl<'a> GameBoard<'a> {
                                 1.5,
                                 &self.line_style,
                             );
-                            target.DrawBitmap(
-                                flag,
-                                Some(&rect),
-                                1.0,
-                                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
-                                None,
-                            );
-                        };
-                    }
-                    CellState::Unknown(_) => unsafe {
-                        target.FillRectangle(&rect, cell_brush);
-                        target.DrawLine(
-                            D2D_POINT_2F { x: left, y: top },
-                            D2D_POINT_2F { x: left, y: bottom },
-                            cell_highlight,
-                            1.5,
-                            &self.line_style,
-                        );
-                        target.DrawLine(
-                            D2D_POINT_2F { x: left, y: top },
-                            D2D_POINT_2F { x: right, y: top },
-                            cell_highlight,
-                            1.5,
-                            &self.line_style,
-                        );
-                    },
+                            }
+                        match self.game.cell_state(x, y) {
+                            CellState::Flagged(_) => unsafe {
+                                target.DrawBitmap(
+                                    flag,
+                                    Some(&rect),
+                                    1.0,
+                                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                    None,
+                                );                                
+                            }
+                            CellState::Questioned(_) => {
+                                unsafe {
+                                    target.DrawText(
+                                        &("?".encode_utf16().collect::<Vec<u16>>()),
+                                        &self.text_format,
+                                        &rect,
+                                        default_brush,
+                                        D2D1_DRAW_TEXT_OPTIONS_NONE,
+                                        DWRITE_MEASURING_MODE_NATURAL,
+                                    );
+    
+                                }
+                            }
+                            _ => {}
+                        }
+                    }                     
                     CellState::Known(mined) => {
                         if !mined {
                             unsafe {
@@ -327,46 +334,6 @@ impl<'a> GameBoard<'a> {
             }
         }
         Ok(())
-    }
-
-    fn draw_cell(&mut self, x: i16, y: i16, state: CellState) {
-        let target = self.target.as_mut().unwrap();
-        let cell_brush = self.cell_brush.as_ref().unwrap();
-        let cell_highlight = self.cell_highlight.as_ref().unwrap();
-
-        let left = x as f32 * self.cell_width + 1.0;
-        let top = y as f32 * self.cell_height + 1.0;
-        let right = left + self.cell_width - 2.0;
-        let bottom = top + self.cell_height - 2.0;
-        let rect = D2D_RECT_F {
-            left,
-            top,
-            right,
-            bottom,
-        };
-        unsafe {
-            target.FillRectangle(&rect, cell_brush);
-            target.DrawLine(
-                D2D_POINT_2F { x: left, y: top },
-                D2D_POINT_2F { x: left, y: bottom },
-                cell_highlight,
-                1.5,
-                &self.line_style,
-            );
-            target.DrawLine(
-                D2D_POINT_2F { x: left, y: top },
-                D2D_POINT_2F { x: right, y: top },
-                cell_highlight,
-                1.5,
-                &self.line_style,
-            );
-
-            match state {
-                CellState::Flagged(_) => {}
-                CellState::Questioned(_) => {}
-                _ => {}
-            }
-        }
     }
 
     fn create_render_target(&mut self) -> Result<()> {
