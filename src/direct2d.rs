@@ -8,12 +8,15 @@ use windows::{
         Graphics::{
             Direct2D::*,
             Imaging::{
-                GUID_WICPixelFormat32bppPBGRA, IWICBitmapDecoder, IWICBitmapFrameDecode,
+                CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA, IWICBitmapDecoder,
                 IWICImagingFactory, WICBitmapDitherTypeNone, WICBitmapPaletteTypeMedianCut,
-                WICDecodeMetadataCacheOnLoad, D2D::IWICImagingFactory2,
+                WICDecodeMetadataCacheOnLoad,
             },
         },
-        System::SystemServices::GENERIC_READ,
+        System::{
+            Com::{CoCreateInstance, CLSCTX_ALL},
+            SystemServices::GENERIC_READ,
+        },
     },
 };
 
@@ -28,11 +31,12 @@ pub fn create_factory() -> Result<ID2D1Factory1> {
     unsafe { D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, Some(&options)) }
 }
 
+pub fn create_image_factory() -> Result<IWICImagingFactory> {
+    unsafe { CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_ALL) }
+}
+
 /// Create a stroke style with the specified dash pattern
-pub fn create_style(
-    factory: &ID2D1Factory1,
-    dashes: Option<&[f32]>,
-) -> Result<ID2D1StrokeStyle> {
+pub fn create_style(factory: &ID2D1Factory1, dashes: Option<&[f32]>) -> Result<ID2D1StrokeStyle> {
     let mut props = D2D1_STROKE_STYLE_PROPERTIES {
         startCap: D2D1_CAP_STYLE_ROUND,
         endCap: D2D1_CAP_STYLE_ROUND,
@@ -61,9 +65,9 @@ pub fn create_brush(
 
 pub fn load_bitmap(
     filename: &HSTRING,
-    target: ID2D1HwndRenderTarget,
-    factory: IWICImagingFactory,
-) -> Result<()> {
+    target: &ID2D1HwndRenderTarget,
+    factory: &IWICImagingFactory,
+) -> Result<ID2D1Bitmap> {
     unsafe {
         let decoder = factory.CreateDecoderFromFilename(
             filename,
@@ -81,7 +85,6 @@ pub fn load_bitmap(
             0.0,
             WICBitmapPaletteTypeMedianCut,
         )?;
-        let bitmap  = target.CreateBitmapFromWicBitmap(&converter, None)?;
+        target.CreateBitmapFromWicBitmap(&converter, None)
     }
-    Ok(())
 }

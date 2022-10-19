@@ -14,7 +14,10 @@ use windows::{
             Direct2D::ID2D1Factory1,
             Gdi::{COLOR_WINDOW, HBRUSH},
         },
-        System::LibraryLoader::GetModuleHandleW,
+        System::{
+            Com::{CoInitializeEx, COINIT_MULTITHREADED},
+            LibraryLoader::GetModuleHandleW,
+        },
         UI::WindowsAndMessaging::{
             AdjustWindowRect, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW,
             GetWindowLongPtrA, GetWindowRect, LoadCursorW, PostQuitMessage, RegisterClassW,
@@ -29,6 +32,9 @@ static REGISTER_WINDOW_CLASS: Once = Once::new();
 static WINDOW_CLASS_NAME: &HSTRING = w!("bytetrail.window.minesweeper");
 
 fn main() -> windows::core::Result<()> {
+    unsafe {
+        CoInitializeEx(None, COINIT_MULTITHREADED)?;
+    }
     let factory = direct2d::create_factory()?;
     let _m = AppWindow::new("MineSweeper", &factory);
     let mut message = MSG::default();

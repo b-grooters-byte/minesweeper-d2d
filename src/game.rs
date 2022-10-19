@@ -1,5 +1,5 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::{cell::Cell, fmt::Display};
+use std::fmt::Display;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum GameState {
@@ -86,7 +86,7 @@ impl Game {
     pub(crate) fn clear(&mut self) {
         // wipe the board and push new values
         self.field_state.clear();
-        for i in 0..(self.width as usize * self.height as usize) {
+        for _i in 0..(self.width as usize * self.height as usize) {
             self.field_state.push(CellState::Unknown(false));
         }
         self.state = GameState::Initial;

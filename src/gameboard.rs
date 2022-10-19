@@ -9,7 +9,8 @@ use windows::{
             Direct2D::{
                 Common::{D2D1_COLOR_F, D2D_POINT_2F, D2D_RECT_F},
                 ID2D1Bitmap, ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
-                ID2D1StrokeStyle, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_HWND_RENDER_TARGET_PROPERTIES,
+                ID2D1StrokeStyle, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_HWND_RENDER_TARGET_PROPERTIES,
                 D2D1_PRESENT_OPTIONS, D2D1_RENDER_TARGET_PROPERTIES,
             },
             DirectWrite::{
@@ -19,6 +20,7 @@ use windows::{
                 DWRITE_TEXT_ALIGNMENT_CENTER,
             },
             Gdi::{BeginPaint, CreateSolidBrush, EndPaint, InvalidateRect, PAINTSTRUCT},
+            Imaging::IWICImagingFactory,
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::{
@@ -32,7 +34,7 @@ use windows::{
 };
 
 use crate::{
-    direct2d::{create_brush, create_style},
+    direct2d::{create_brush, create_image_factory, create_style, load_bitmap},
     game::{CellState, Game, GameState},
 };
 
@@ -54,6 +56,8 @@ const NUM_BRUSH: [(f32, f32, f32); 7] = [
     (0.0, 0.0, 0.0),
 ];
 
+const FLAG_FILE: &HSTRING = w!("flag.png");
+
 pub(crate) enum BoardLevel {
     Easy,
     Medium,
@@ -63,6 +67,7 @@ pub(crate) enum BoardLevel {
 pub(crate) struct GameBoard<'a> {
     handle: HWND,
     factory: &'a ID2D1Factory1,
+    image_factory: IWICImagingFactory,
     text_format: IDWriteTextFormat,
     target: Option<ID2D1HwndRenderTarget>,
     line_style: ID2D1StrokeStyle,
@@ -86,8 +91,8 @@ impl<'a> GameBoard<'a> {
         let instance = unsafe { GetModuleHandleW(None)? };
         let write_factory: IDWriteFactory =
             unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
+        let image_factory = create_image_factory()?;
         let line_style = create_style(&factory, None)?;
-
         let text_format = unsafe {
             write_factory.CreateTextFormat(
                 &HSTRING::from("San Serif"),
@@ -142,6 +147,7 @@ impl<'a> GameBoard<'a> {
         let mut board = Box::new(GameBoard {
             handle: HWND(0),
             factory,
+            image_factory,
             text_format,
             target: None,
             line_style,
@@ -183,6 +189,7 @@ impl<'a> GameBoard<'a> {
         if self.target.is_none() {
             self.create_render_target()?;
             let target = self.target.as_ref().unwrap();
+            self.flag = Some(load_bitmap(FLAG_FILE, target, &self.image_factory)?);
             unsafe { target.SetDpi(self.dpix, self.dpiy) };
             self.cell_highlight = Some(create_brush(
                 target,
@@ -210,7 +217,7 @@ impl<'a> GameBoard<'a> {
         }
         unsafe {
             self.target.as_ref().unwrap().BeginDraw();
-            self.draw_board();
+            self.draw_board()?;
             self.target.as_ref().unwrap().EndDraw(None, None)?;
         }
         Ok(())
@@ -229,6 +236,7 @@ impl<'a> GameBoard<'a> {
 
         let cell_brush = self.cell_brush.as_ref().unwrap();
         let cell_highlight = self.cell_highlight.as_ref().unwrap();
+        let flag = self.flag.as_ref().unwrap();
         let num_brush: [&ID2D1SolidColorBrush; 4] = [
             self.num_brush[0].as_ref().unwrap(),
             self.num_brush[1].as_ref().unwrap(),
@@ -250,15 +258,28 @@ impl<'a> GameBoard<'a> {
                 match self.game.cell_state(x, y) {
                     CellState::Flagged(_) => {
                         unsafe {
-                            target.FillRectangle(
-                                &D2D_RECT_F {
-                                    left: 1.0,
-                                    top: 1.0,
-                                    right: 11.0,
-                                    bottom: 10.0,
-                                },
-                                cell_brush,
-                            )
+                            target.FillRectangle(&rect, cell_brush);
+                            target.DrawLine(
+                                D2D_POINT_2F { x: left, y: top },
+                                D2D_POINT_2F { x: left, y: bottom },
+                                cell_highlight,
+                                1.5,
+                                &self.line_style,
+                            );
+                            target.DrawLine(
+                                D2D_POINT_2F { x: left, y: top },
+                                D2D_POINT_2F { x: right, y: top },
+                                cell_highlight,
+                                1.5,
+                                &self.line_style,
+                            );
+                            target.DrawBitmap(
+                                flag,
+                                Some(&rect),
+                                1.0,
+                                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                None,
+                            );
                         };
                     }
                     CellState::Unknown(_) => unsafe {
