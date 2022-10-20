@@ -209,7 +209,7 @@ impl<'a> GameBoard<'a> {
                 CELL_COLOR.2,
                 1.0,
             )?);
-            for i in 0..4 {
+            for i in 0..7 {
                 self.num_brush[i] = Some(create_brush(
                     target,
                     NUM_BRUSH[i].0,
@@ -241,11 +241,14 @@ impl<'a> GameBoard<'a> {
         let default_brush = self.default_brush.as_ref().unwrap();
         let cell_brush = self.cell_brush.as_ref().unwrap();
         let cell_highlight = self.cell_highlight.as_ref().unwrap();
-        let num_brush: [&ID2D1SolidColorBrush; 4] = [
+        let num_brush: [&ID2D1SolidColorBrush; 7] = [
             self.num_brush[0].as_ref().unwrap(),
             self.num_brush[1].as_ref().unwrap(),
             self.num_brush[2].as_ref().unwrap(),
             self.num_brush[3].as_ref().unwrap(),
+            self.num_brush[4].as_ref().unwrap(),
+            self.num_brush[5].as_ref().unwrap(),
+            self.num_brush[6].as_ref().unwrap(),
         ];
         let flag = self.flag.as_ref().unwrap();
 
@@ -389,8 +392,13 @@ impl<'a> GameBoard<'a> {
                     let x_cell = (x / self.cell_width) as i16;
                     let y_cell = (y / self.cell_height) as i16;
                     let state = self.game.uncover(x_cell, y_cell);
+                    // todo animate lost sequence
                     if state == GameState::Lost {
                         self.game.show_mined();
+                    }
+                    // TODO animate won sequence
+                    if state == GameState::Won {
+                        self.game.reset();
                     }
                 }
                 // TODO manage the results of uncover to control clip

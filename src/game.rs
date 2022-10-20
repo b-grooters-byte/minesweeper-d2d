@@ -28,7 +28,9 @@ pub(crate) struct Game {
     state: GameState,
     field_state: Vec<CellState>,
     total: u16,
-    remaining: u16,
+    est_remaining: u16,
+    act_remaining: u16,
+    unknown: usize,
 }
 
 impl Game {
@@ -41,7 +43,9 @@ impl Game {
             state: GameState::Initial,
             field_state: minefield,
             total: 0,
-            remaining: 0,
+            est_remaining: 0,
+            act_remaining: 0,
+            unknown: size,
         };
         game.reset();
         game
@@ -57,6 +61,10 @@ impl Game {
 
     pub(crate) fn state(&self) -> GameState {
         self.state
+    }
+
+    pub(crate) fn  unknown(&self) -> usize {
+        self.unknown
     }
 
     pub(crate) fn cell_state(&self, x: i16, y: i16) -> CellState {
@@ -78,8 +86,10 @@ impl Game {
             }
             self.field_state[cell] = CellState::Unknown(true);
         }
-        self.remaining = density;
+        self.act_remaining = density;
+        self.est_remaining = density;
         self.total = density;
+        self.unknown = size;
         self.state = GameState::Initial;
     }
 
@@ -92,17 +102,25 @@ impl Game {
         self.state = GameState::Initial;
     }
 
-    pub(crate) fn remaining(&self) -> u16 {
-        self.remaining
+    pub(crate) fn est_remaining(&self) -> u16 {
+        self.est_remaining
     }
+
+    pub(crate) fn act_remaining(&self) -> u16 {
+        self.act_remaining
+    }
+
 
     pub(crate) fn flag(&mut self, x: i16, y: i16) {
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
             CellState::Unknown(mined) | CellState::Questioned(mined) => {
                 self.field_state[index] = CellState::Flagged(mined);
-                if self.remaining > 0 {
-                    self.remaining -= 1;
+                if self.est_remaining > 0 {
+                    self.est_remaining -= 1;    
+                }
+                if mined {
+                    self.act_remaining -= 1;
                 }
             }
             _ => {}
@@ -116,8 +134,12 @@ impl Game {
             CellState::Unknown(mined) => self.field_state[index] = CellState::Questioned(mined),
             CellState::Flagged(mined) => {
                 self.field_state[index] = CellState::Questioned(mined);
-                // todo correct for over flagged
-                self.remaining += 1;
+                if self.est_remaining != self.total {
+                    self.est_remaining += 1;
+                }
+                if mined {
+                    self.act_remaining += 1;
+                }
             }
             _ => {}
         }
@@ -129,8 +151,12 @@ impl Game {
         match self.field_state[index] {
             CellState::Flagged(mined) => {
                 self.field_state[index] = CellState::Unknown(mined);
-                // todo correct for over flagged
-                self.remaining += 1;
+                if self.est_remaining != self.total {
+                    self.est_remaining += 1;
+                }
+                if mined {
+                    self.act_remaining += 1;
+                }
             }
             CellState::Known(mined) | CellState::Questioned(mined) => {
                 self.field_state[index] = CellState::Unknown(mined)
@@ -161,54 +187,53 @@ impl Game {
         self.state = GameState::Playing;
         let index = (y * self.width + x) as usize;
         match self.field_state[index] {
+            CellState::Unknown(true) | CellState::Flagged(true) | CellState::Questioned(true) => {
+                self.field_state[index] = CellState::Known(true);
+                self.state = GameState::Lost;
+            }
             CellState::Questioned(false)
             | CellState::Flagged(false)
             | CellState::Unknown(false) => {
                 let count = self.neighbor_count(x, y);
                 if count != 0 {
                     self.field_state[index] = CellState::Counted(count);
+                    self.unknown -= 1;
                 } else {
                     let mut stack = Vec::<(i16, i16)>::new();
                     stack.push((x, y));
                     while stack.len() > 0 {
                         let (x, y) = stack.pop().unwrap();
-                        let index = (y * self.width + x) as usize;
-                        let count = self.neighbor_count(x, y);
-                        if count == 0 {
-                            self.field_state[index] = CellState::Known(false);
-                            for y_idx in y - 1..=y + 1 {
-                                if y_idx < 0 || y_idx == self.height {
+                        for y_idx in y - 1..=y + 1 {
+                            if y_idx < 0 || y_idx == self.height {
+                                continue;
+                            }
+                            let row_idx = (y_idx * self.width) as usize;
+                            for x_idx in x - 1..=x + 1 {
+                                if x_idx < 0 || x_idx == self.width {
                                     continue;
                                 }
-                                let row_idx = (y_idx * self.width) as usize;
-                                for x_idx in x - 1..=x + 1 {
-                                    if x_idx < 0 || x_idx == self.width {
-                                        continue;
-                                    }
-                                    let index = row_idx + x_idx as usize;
-                                    // do not check self
-                                    if index == (y * self.width + x) as usize {
-                                        continue;
-                                    }
-                                    if self.field_state[index] == CellState::Unknown(false) {
-                                        stack.push((x_idx, y_idx));
+                                let index = row_idx + x_idx as usize;
+                                if self.field_state[index] == CellState::Unknown(false) {
+                                    self.unknown -= 1;
+                                    match self.neighbor_count(x_idx, y_idx) {
+                                        0 => 
+                                            {
+                                                self.field_state[index] = CellState::Known(false);
+                                                stack.push((x_idx, y_idx));
+                                            }
+                                        count =>  self.field_state[index] = CellState::Counted(count)
                                     }
                                 }
                             }
-                        } else {
-                            self.field_state[index] = CellState::Counted(count);
                         }
                     }
                 }
+                if self.unknown == 0 {
+                    self.state = GameState::Won;
+                }
             }
-            CellState::Questioned(true) | CellState::Flagged(true) | CellState::Unknown(true) => {
-                // uncovered a mined cell
-                self.field_state[index] = CellState::Known(true);
-                self.state = GameState::Lost;
-            }
-            _ => {
-                // do nothing in the known states
-            }
+            _ => {}
+
         }
         self.state
     }
@@ -270,7 +295,8 @@ mod test {
     #[test]
     pub fn test_game_new() {
         let game = Game::new(10, 10);
-        assert_eq!(12, game.remaining());
+        assert_eq!(12, game.est_remaining());
+        assert_eq!(12, game.act_remaining());
         let mut remaining = 0_u16;
         for cell in game.field_state {
             if cell == CellState::Unknown(true) {
@@ -357,9 +383,10 @@ mod test {
         let mut game = Game::new(5, 5);
         assert_eq!(GameState::Initial, game.state);
         game.clear();
-        assert_eq!(GameState::Initial, game.state);
+        game.field_state[24] = CellState::Unknown(true);
         let state = game.uncover(1, 1);
         assert_eq!(GameState::Playing, state);
+
         game.field_state[0] = CellState::Unknown(true);
         let state = game.uncover(0, 0);
         assert_eq!(GameState::Lost, state);
