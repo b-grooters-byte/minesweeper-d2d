@@ -8,7 +8,7 @@ use windows::{
         Graphics::{
             Direct2D::*,
             Imaging::{
-                CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA, IWICBitmapDecoder,
+                CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA,
                 IWICImagingFactory, WICBitmapDitherTypeNone, WICBitmapPaletteTypeMedianCut,
                 WICDecodeMetadataCacheOnLoad,
             },

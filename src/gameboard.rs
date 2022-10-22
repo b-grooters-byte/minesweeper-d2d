@@ -19,7 +19,7 @@ use windows::{
                 DWRITE_MEASURING_MODE_NATURAL, DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
                 DWRITE_TEXT_ALIGNMENT_CENTER,
             },
-            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, InvalidateRect, PAINTSTRUCT, BLACK_BRUSH},
+            Gdi::{BeginPaint, CreateSolidBrush, EndPaint, InvalidateRect, PAINTSTRUCT},
             Imaging::IWICImagingFactory,
         },
         System::LibraryLoader::GetModuleHandleW,
@@ -332,7 +332,6 @@ impl<'a> GameBoard<'a> {
                             DWRITE_MEASURING_MODE_NATURAL,
                         );
                     },
-                    CellState::Questioned(_) => {}
                 }
             }
         }
