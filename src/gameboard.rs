@@ -28,7 +28,7 @@ use windows::{
             RegisterClassW, SetWindowLongPtrA, CREATESTRUCTA, CS_HREDRAW, CS_VREDRAW,
             CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW, WINDOW_EX_STYLE, WM_CREATE,
             WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CHILDWINDOW, WS_CLIPSIBLINGS,
-            WS_VISIBLE,
+            WS_VISIBLE, WM_DESTROY,
         },
     },
 };
@@ -190,6 +190,18 @@ impl<'a> GameBoard<'a> {
         self.handle
     }
 
+    fn release_device_resources(&mut self) {
+        self.default_brush = None;
+        self.cell_brush = None;
+        self.cell_highlight = None;
+        for i in 0..7 {
+            self.num_brush[i] = None;
+        }
+        self.flag = None;
+        self.mine = None;
+        self.target = None;
+    }
+
     fn render(&mut self) -> Result<()> {
         if self.target.is_none() {
             self.create_render_target()?;
@@ -244,15 +256,10 @@ impl<'a> GameBoard<'a> {
         let default_brush = self.default_brush.as_ref().unwrap();
         let cell_brush = self.cell_brush.as_ref().unwrap();
         let cell_highlight = self.cell_highlight.as_ref().unwrap();
-        let num_brush: [&ID2D1SolidColorBrush; 7] = [
-            self.num_brush[0].as_ref().unwrap(),
-            self.num_brush[1].as_ref().unwrap(),
-            self.num_brush[2].as_ref().unwrap(),
-            self.num_brush[3].as_ref().unwrap(),
-            self.num_brush[4].as_ref().unwrap(),
-            self.num_brush[5].as_ref().unwrap(),
-            self.num_brush[6].as_ref().unwrap(),
-        ];
+        let mut num_brush: Vec<&ID2D1SolidColorBrush> = Vec::new();
+        for brush_ref in &self.num_brush {
+            num_brush.push(brush_ref.as_ref().unwrap());
+        }
         let flag = self.flag.as_ref().unwrap();
         let mine = self.mine.as_ref().unwrap();
 
@@ -416,6 +423,10 @@ impl<'a> GameBoard<'a> {
                 }
                 // TODO manage the results of uncover to control clip
                 unsafe { InvalidateRect(self.handle, None, false) };
+                LRESULT(0)
+            }
+            WM_DESTROY => {
+                self.release_device_resources();
                 LRESULT(0)
             }
             _ => unsafe { DefWindowProcW(self.handle, message, wparam, lparam) },
