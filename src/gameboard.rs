@@ -56,7 +56,7 @@ const NUM_BRUSH: [(f32, f32, f32); 7] = [
     (0.0, 0.65, 1.0),
     (0.0, 0.0, 0.0),
 ];
-
+const MINE_FILE: &HSTRING = w!("mine.png");
 const FLAG_FILE: &HSTRING = w!("flag.png");
 
 pub(crate) enum BoardLevel {
@@ -77,6 +77,7 @@ pub(crate) struct GameBoard<'a> {
     cell_highlight: Option<ID2D1SolidColorBrush>,
     num_brush: [Option<ID2D1SolidColorBrush>; 7],
     flag: Option<ID2D1Bitmap>,
+    mine: Option<ID2D1Bitmap>,
     game: Game,
     cell_width: f32,
     cell_height: f32,
@@ -158,6 +159,7 @@ impl<'a> GameBoard<'a> {
             cell_highlight: None,
             num_brush: [None, None, None, None, None, None, None],
             flag: None,
+            mine: None,
             game,
             cell_width: dpix * CELL_WIDTH as f32,
             cell_height: dpiy * CELL_HEIGHT as f32,
@@ -193,6 +195,7 @@ impl<'a> GameBoard<'a> {
             self.create_render_target()?;
             let target = self.target.as_ref().unwrap();
             self.flag = Some(load_bitmap(FLAG_FILE, target, &self.image_factory)?);
+            self.mine = Some(load_bitmap(MINE_FILE, target, &self.image_factory)?);
             unsafe { target.SetDpi(self.dpix, self.dpiy) };
             self.default_brush = Some(create_brush(target, DEFAULT_COLOR.0, DEFAULT_COLOR.1, DEFAULT_COLOR.2, 1.0)?);
             self.cell_highlight = Some(create_brush(
@@ -251,6 +254,7 @@ impl<'a> GameBoard<'a> {
             self.num_brush[6].as_ref().unwrap(),
         ];
         let flag = self.flag.as_ref().unwrap();
+        let mine = self.mine.as_ref().unwrap();
 
         for x in 0..self.game.width() {
             for y in 0..self.game.height() {
@@ -310,11 +314,21 @@ impl<'a> GameBoard<'a> {
                         }
                     }                     
                     CellState::Known(mined) => {
-                        if !mined {
                             unsafe {
                                 target.FillRectangle(&rect, cell_brush);
                             }
-                        }
+                            if mined {
+                                unsafe {
+                                target.DrawBitmap(
+                                    mine,
+                                    Some(&rect),
+                                    1.0,
+                                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                    None,
+                                );      
+                            }                          
+
+                            }
                     }
                     CellState::Counted(count) => unsafe {
                         let mut mine_count = count;
