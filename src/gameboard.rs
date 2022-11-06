@@ -189,6 +189,12 @@ impl<'a> GameBoard<'a> {
     pub(crate) fn hwnd(&self) -> HWND {
         self.handle
     }
+    
+
+    fn release_device(&mut self) {
+        self.target = None;
+        self.release_device_resources();
+    }
 
     fn release_device_resources(&mut self) {
         self.default_brush = None;
@@ -426,7 +432,7 @@ impl<'a> GameBoard<'a> {
                 LRESULT(0)
             }
             WM_DESTROY => {
-                self.release_device_resources();
+                self.release_device();
                 LRESULT(0)
             }
             _ => unsafe { DefWindowProcW(self.handle, message, wparam, lparam) },
