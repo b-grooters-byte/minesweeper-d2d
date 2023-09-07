@@ -5,18 +5,16 @@ use windows::{
     Foundation::Numerics::Matrix3x2,
     Win32::Graphics::Direct2D::Common::*,
     Win32::{
+        Foundation::GENERIC_READ,
         Graphics::{
             Direct2D::*,
             Imaging::{
-                CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA,
-                IWICImagingFactory, WICBitmapDitherTypeNone, WICBitmapPaletteTypeMedianCut,
+                CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA, IWICImagingFactory,
+                WICBitmapDitherTypeNone, WICBitmapPaletteTypeMedianCut,
                 WICDecodeMetadataCacheOnLoad,
             },
         },
-        System::{
-            Com::{CoCreateInstance, CLSCTX_ALL},
-            SystemServices::GENERIC_READ,
-        },
+        System::Com::{CoCreateInstance, CLSCTX_ALL},
     },
 };
 
@@ -71,7 +69,7 @@ pub fn load_bitmap(
     unsafe {
         let decoder = factory.CreateDecoderFromFilename(
             filename,
-            null(),
+            Some(null()),
             GENERIC_READ,
             WICDecodeMetadataCacheOnLoad,
         )?;

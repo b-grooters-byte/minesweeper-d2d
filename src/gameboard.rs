@@ -1,8 +1,7 @@
 use std::sync::Once;
 
 use windows::{
-    core::{Result, HSTRING},
-    w,
+    core::{Result, HSTRING, PCWSTR},
     Win32::{
         Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
@@ -26,9 +25,9 @@ use windows::{
         UI::WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowLongPtrA, LoadCursorW,
             RegisterClassW, SetWindowLongPtrA, CREATESTRUCTA, CS_HREDRAW, CS_VREDRAW,
-            CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW, WINDOW_EX_STYLE, WM_CREATE,
+            CW_USEDEFAULT, GWLP_USERDATA, HMENU, IDC_ARROW, WINDOW_EX_STYLE, WM_CREATE, WM_DESTROY,
             WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CHILDWINDOW, WS_CLIPSIBLINGS,
-            WS_VISIBLE, WM_DESTROY,
+            WS_VISIBLE,
         },
     },
 };
@@ -39,7 +38,6 @@ use crate::{
 };
 
 static REGISTER_GAMEBOARD_WINDOW_CLASS: Once = Once::new();
-static GAMEBOARD_WINDOW_CLASS_NAME: &HSTRING = w!("bytetrail.window.bezier-demo");
 
 const CELL_WIDTH: f32 = 6.0 / 25.4;
 const CELL_HEIGHT: f32 = 6.0 / 25.4;
@@ -56,8 +54,8 @@ const NUM_BRUSH: [(f32, f32, f32); 7] = [
     (0.0, 0.65, 1.0),
     (0.0, 0.0, 0.0),
 ];
-const MINE_FILE: &HSTRING = w!("mine.png");
-const FLAG_FILE: &HSTRING = w!("flag.png");
+const MINE_FILE: &HSTRING = windows::core::h!("mine.png");
+const FLAG_FILE: &HSTRING = windows::core::h!("flag.png");
 
 pub(crate) enum BoardLevel {
     Easy,
@@ -116,10 +114,10 @@ impl<'a> GameBoard<'a> {
             let class = WNDCLASSW {
                 style: CS_HREDRAW | CS_VREDRAW,
                 lpfnWndProc: Some(Self::wnd_proc),
-                hInstance: instance,
+                hInstance: instance.into(),
                 hCursor: unsafe { LoadCursorW(HINSTANCE(0), IDC_ARROW).ok().unwrap() },
                 hbrBackground: unsafe { CreateSolidBrush(COLORREF(0)) },
-                lpszClassName: GAMEBOARD_WINDOW_CLASS_NAME.into(),
+                lpszClassName: windows::core::w!("bytetrail.window.bezier-demo"),
                 ..Default::default()
             };
             assert_ne!(unsafe { RegisterClassW(&class) }, 0);
@@ -170,7 +168,7 @@ impl<'a> GameBoard<'a> {
         let _window = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
-                GAMEBOARD_WINDOW_CLASS_NAME,
+                windows::core::w!("bytetrail.window.bezier-demo"),
                 &HSTRING::from(""),
                 WS_VISIBLE | WS_CLIPSIBLINGS | WS_CHILDWINDOW,
                 CW_USEDEFAULT,
@@ -189,7 +187,6 @@ impl<'a> GameBoard<'a> {
     pub(crate) fn hwnd(&self) -> HWND {
         self.handle
     }
-    
 
     fn release_device(&mut self) {
         self.target = None;
@@ -212,10 +209,16 @@ impl<'a> GameBoard<'a> {
         if self.target.is_none() {
             self.create_render_target()?;
             let target = self.target.as_ref().unwrap();
-            self.flag = Some(load_bitmap(FLAG_FILE, target, &self.image_factory)?);
+            self.flag = Some(load_bitmap(FLAG_FILE.into(), target, &self.image_factory)?);
             self.mine = Some(load_bitmap(MINE_FILE, target, &self.image_factory)?);
             unsafe { target.SetDpi(self.dpix, self.dpiy) };
-            self.default_brush = Some(create_brush(target, DEFAULT_COLOR.0, DEFAULT_COLOR.1, DEFAULT_COLOR.2, 1.0)?);
+            self.default_brush = Some(create_brush(
+                target,
+                DEFAULT_COLOR.0,
+                DEFAULT_COLOR.1,
+                DEFAULT_COLOR.2,
+                1.0,
+            )?);
             self.cell_highlight = Some(create_brush(
                 target,
                 CELL_HIGHLIGHT.0,
@@ -299,7 +302,7 @@ impl<'a> GameBoard<'a> {
                                 1.5,
                                 &self.line_style,
                             );
-                            }
+                        }
                         match self.game.cell_state(x, y) {
                             CellState::Flagged(_) => unsafe {
                                 target.DrawBitmap(
@@ -308,40 +311,36 @@ impl<'a> GameBoard<'a> {
                                     1.0,
                                     D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
                                     None,
-                                );                                
-                            }
-                            CellState::Questioned(_) => {
-                                unsafe {
-                                    target.DrawText(
-                                        &("?".encode_utf16().collect::<Vec<u16>>()),
-                                        &self.text_format,
-                                        &rect,
-                                        default_brush,
-                                        D2D1_DRAW_TEXT_OPTIONS_NONE,
-                                        DWRITE_MEASURING_MODE_NATURAL,
-                                    );
-    
-                                }
-                            }
+                                );
+                            },
+                            CellState::Questioned(_) => unsafe {
+                                target.DrawText(
+                                    &("?".encode_utf16().collect::<Vec<u16>>()),
+                                    &self.text_format,
+                                    &rect,
+                                    default_brush,
+                                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                                    DWRITE_MEASURING_MODE_NATURAL,
+                                );
+                            },
                             _ => {}
                         }
-                    }                     
+                    }
                     CellState::Known(mined) => {
+                        unsafe {
+                            target.FillRectangle(&rect, cell_brush);
+                        }
+                        if mined {
                             unsafe {
-                                target.FillRectangle(&rect, cell_brush);
-                            }
-                            if mined {
-                                unsafe {
                                 target.DrawBitmap(
                                     mine,
                                     Some(&rect),
                                     1.0,
                                     D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
                                     None,
-                                );      
-                            }                          
-
+                                );
                             }
+                        }
                     }
                     CellState::Counted(count) => unsafe {
                         let mut mine_count = count;

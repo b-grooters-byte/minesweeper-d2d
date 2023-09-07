@@ -4,19 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name="cli"
-path="src/cli.rs"
+name = "cli"
+path = "src/cli.rs"
 
 [[bin]]
-name="app"
-path="src/app.rs"
+name = "app"
+path = "src/app.rs"
 
 
 [dependencies]
-rand = {version="0.8", features=["std_rng"]}
+rand = { version = "0.8", features = ["std_rng"] }
 
 [dependencies.windows]
-version = "0.42"
+version = "0.51"
 features = [
     "Foundation",
     "Foundation_Numerics",

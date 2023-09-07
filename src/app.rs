@@ -6,8 +6,7 @@ use gameboard::{BoardLevel, GameBoard};
 use std::sync::Once;
 use windows::{
     core::Result,
-    core::HSTRING,
-    w,
+    core::{w, HSTRING},
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
@@ -29,7 +28,6 @@ use windows::{
 };
 
 static REGISTER_WINDOW_CLASS: Once = Once::new();
-static WINDOW_CLASS_NAME: &HSTRING = w!("bytetrail.window.minesweeper");
 
 fn main() -> windows::core::Result<()> {
     unsafe {
@@ -61,10 +59,10 @@ impl<'a> AppWindow<'a> {
             let class = WNDCLASSW {
                 lpfnWndProc: Some(Self::wnd_proc),
                 hbrBackground: HBRUSH(COLOR_WINDOW.0 as isize),
-                hInstance: instance,
+                hInstance: instance.into(),
                 style: CS_HREDRAW | CS_VREDRAW,
                 hCursor: unsafe { LoadCursorW(HINSTANCE(0), IDC_ARROW).ok().unwrap() },
-                lpszClassName: WINDOW_CLASS_NAME.into(),
+                lpszClassName: w!("bytetrail.window.minesweeper"),
                 ..Default::default()
             };
             assert_ne!(unsafe { RegisterClassW(&class) }, 0);
@@ -78,7 +76,7 @@ impl<'a> AppWindow<'a> {
         let window = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
-                WINDOW_CLASS_NAME,
+                w!("bytetrail.window.minesweeper"),
                 &HSTRING::from(title),
                 WS_VISIBLE | WS_OVERLAPPEDWINDOW,
                 CW_USEDEFAULT,
