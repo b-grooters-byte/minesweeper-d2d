@@ -108,17 +108,27 @@ impl<'a> AppWindow<'a> {
                         let mut rect = RECT::default();
                         let mut child_rect = RECT::default();
                         unsafe {
-                            GetWindowRect(self.handle, &mut rect);
-                            GetWindowRect(
+                            if GetWindowRect(self.handle, &mut rect).is_err() {
+                                return LRESULT(-1);
+                            }
+                            if GetWindowRect(
                                 self.game_board.as_ref().unwrap().hwnd(),
                                 &mut child_rect,
-                            );
-                            AdjustWindowRect(
+                            )
+                            .is_err()
+                            {
+                                return LRESULT(-1);
+                            }
+                            if AdjustWindowRect(
                                 &mut child_rect,
                                 WS_VISIBLE | WS_OVERLAPPEDWINDOW,
                                 false,
-                            );
-                            SetWindowPos(
+                            )
+                            .is_err()
+                            {
+                                return LRESULT(-1);
+                            }
+                            if SetWindowPos(
                                 self.handle,
                                 None,
                                 rect.left,
@@ -126,11 +136,14 @@ impl<'a> AppWindow<'a> {
                                 child_rect.right - child_rect.left,
                                 child_rect.bottom - child_rect.top,
                                 SWP_NOMOVE,
-                            );
+                            )
+                            .is_err()
+                            {
+                                return LRESULT(-1);
+                            }
                         }
                     }
                     Err(_e) => {
-                        // TODO determine correct LRESULT
                         return LRESULT(-1);
                     }
                 }

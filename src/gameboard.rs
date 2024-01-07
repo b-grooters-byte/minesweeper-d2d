@@ -1,7 +1,7 @@
 use std::sync::Once;
 
 use windows::{
-    core::{Result, HSTRING, PCWSTR},
+    core::{Result, HSTRING},
     Win32::{
         Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::{
@@ -93,7 +93,7 @@ impl<'a> GameBoard<'a> {
         let write_factory: IDWriteFactory =
             unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
         let image_factory = create_image_factory()?;
-        let line_style = create_style(&factory, None)?;
+        let line_style = create_style(factory, None)?;
         let text_format = unsafe {
             write_factory.CreateTextFormat(
                 &HSTRING::from("San Serif"),
@@ -159,8 +159,8 @@ impl<'a> GameBoard<'a> {
             flag: None,
             mine: None,
             game,
-            cell_width: dpix * CELL_WIDTH as f32,
-            cell_height: dpiy * CELL_HEIGHT as f32,
+            cell_width: dpix * CELL_WIDTH,
+            cell_height: dpiy * CELL_HEIGHT,
             dpix,
             dpiy,
         });
@@ -209,7 +209,7 @@ impl<'a> GameBoard<'a> {
         if self.target.is_none() {
             self.create_render_target()?;
             let target = self.target.as_ref().unwrap();
-            self.flag = Some(load_bitmap(FLAG_FILE.into(), target, &self.image_factory)?);
+            self.flag = Some(load_bitmap(FLAG_FILE, target, &self.image_factory)?);
             self.mine = Some(load_bitmap(MINE_FILE, target, &self.image_factory)?);
             unsafe { target.SetDpi(self.dpix, self.dpiy) };
             self.default_brush = Some(create_brush(
@@ -233,14 +233,8 @@ impl<'a> GameBoard<'a> {
                 CELL_COLOR.2,
                 1.0,
             )?);
-            for i in 0..7 {
-                self.num_brush[i] = Some(create_brush(
-                    target,
-                    NUM_BRUSH[i].0,
-                    NUM_BRUSH[i].1,
-                    NUM_BRUSH[i].2,
-                    1.0,
-                )?);
+            for (i, brush) in NUM_BRUSH.iter().enumerate() {
+                self.num_brush[i] = Some(create_brush(target, brush.0, brush.1, brush.2, 1.0)?);
             }
         }
         unsafe {
@@ -367,7 +361,7 @@ impl<'a> GameBoard<'a> {
     fn create_render_target(&mut self) -> Result<()> {
         unsafe {
             let mut rect: RECT = RECT::default();
-            GetClientRect(self.handle, &mut rect);
+            let _ = GetClientRect(self.handle, &mut rect);
             let props = D2D1_RENDER_TARGET_PROPERTIES::default();
             let hwnd_props = D2D1_HWND_RENDER_TARGET_PROPERTIES {
                 hwnd: self.handle,
