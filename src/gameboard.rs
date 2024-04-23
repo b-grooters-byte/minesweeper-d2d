@@ -8,7 +8,7 @@ use windows::{
             Direct2D::{
                 Common::{D2D1_COLOR_F, D2D_POINT_2F, D2D_RECT_F},
                 ID2D1Bitmap, ID2D1Factory1, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
-                ID2D1StrokeStyle, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                ID2D1StrokeStyle1, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
                 D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_HWND_RENDER_TARGET_PROPERTIES,
                 D2D1_PRESENT_OPTIONS, D2D1_RENDER_TARGET_PROPERTIES,
             },
@@ -69,7 +69,7 @@ pub(crate) struct GameBoard<'a> {
     image_factory: IWICImagingFactory,
     text_format: IDWriteTextFormat,
     target: Option<ID2D1HwndRenderTarget>,
-    line_style: ID2D1StrokeStyle,
+    line_style: ID2D1StrokeStyle1,
     default_brush: Option<ID2D1SolidColorBrush>,
     cell_brush: Option<ID2D1SolidColorBrush>,
     cell_highlight: Option<ID2D1SolidColorBrush>,

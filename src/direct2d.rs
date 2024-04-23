@@ -34,8 +34,8 @@ pub fn create_image_factory() -> Result<IWICImagingFactory> {
 }
 
 /// Create a stroke style with the specified dash pattern
-pub fn create_style(factory: &ID2D1Factory1, dashes: Option<&[f32]>) -> Result<ID2D1StrokeStyle> {
-    let mut props = D2D1_STROKE_STYLE_PROPERTIES {
+pub fn create_style(factory: &ID2D1Factory1, dashes: Option<&[f32]>) -> Result<ID2D1StrokeStyle1> {
+    let mut props = D2D1_STROKE_STYLE_PROPERTIES1 {
         startCap: D2D1_CAP_STYLE_ROUND,
         endCap: D2D1_CAP_STYLE_ROUND,
         ..Default::default()

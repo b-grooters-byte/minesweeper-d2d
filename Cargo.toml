@@ -15,7 +15,7 @@ path = "src/app.rs"
 rand = { version = "0.8", features = ["std_rng"] }
 
 [dependencies.windows]
-version = "0.52"
+version = "0.56"
 features = [
     "Foundation",
     "Foundation_Numerics",

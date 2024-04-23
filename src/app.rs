@@ -3,7 +3,7 @@ mod game;
 mod gameboard;
 
 use gameboard::{BoardLevel, GameBoard};
-use std::sync::Once;
+use std::{error::Error, sync::Once};
 use windows::{
     core::Result,
     core::{w, HSTRING},
@@ -31,7 +31,10 @@ static REGISTER_WINDOW_CLASS: Once = Once::new();
 
 fn main() -> windows::core::Result<()> {
     unsafe {
-        CoInitializeEx(None, COINIT_MULTITHREADED)?;
+        let result = CoInitializeEx(None, COINIT_MULTITHREADED);
+        if result.is_err() {
+            return Err(result.into());
+        }
     }
     let factory = direct2d::create_factory()?;
     let _m = AppWindow::new("MineSweeper", &factory);
